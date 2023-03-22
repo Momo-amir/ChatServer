@@ -1,67 +1,68 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 
-namespace ChatServer { 
-class Program
+namespace ChatServer
 {
-    static void Main(string[] args)
+    class Program
     {
-        // Start listening for incoming connections.
-        TcpListener listener = new TcpListener(IPAddress.Any, 8080);
-        listener.Start();
-        Console.WriteLine("Chat server started.");
+        static List<TcpClient> clients = new List<TcpClient>();
 
-        // Create a new thread for each client.
-        while (true)
+        static void Main(string[] args)
         {
-            TcpClient client = listener.AcceptTcpClient();
-            Thread thread = new Thread(new ParameterizedThreadStart(HandleClient));
-            thread.Start(client);
-        }
-    }
+            Console.WriteLine("Starting server...");
+            TcpListener listener = new TcpListener(IPAddress.Any, 1234);
+            listener.Start();
 
-    static void HandleClient(object obj)
-    {
-        // Get the client object and create a network stream.
-        TcpClient client = (TcpClient)obj;
-        NetworkStream stream = client.GetStream();
+            Console.WriteLine("Listening on port 1234...");
 
-        // Prompt the client for their username.
-        byte[] data = new byte[256];
-        int bytes = stream.Read(data, 0, data.Length);
-        string username = Encoding.ASCII.GetString(data, 0, bytes);
+            while (true)
+            {
+                TcpClient client = listener.AcceptTcpClient();
+                Console.WriteLine("Client connected");
 
-        // Add the client to the chat room.
-        Console.WriteLine("{0} has joined the chat room.", username);
-        byte[] welcomeMessage = Encoding.ASCII.GetBytes("Welcome to the chat room, " + username + "!");
-        BroadcastMessage(welcomeMessage);
+                clients.Add(client);
 
-        // Start receiving messages from the client.
-        while (true)
-        {
-            bytes = stream.Read(data, 0, data.Length);
-            string message = Encoding.ASCII.GetString(data, 0, bytes);
-            Console.WriteLine("{0}: {1}", username, message);
-            BroadcastMessage(data);
+                NetworkStream stream = client.GetStream();
+
+                byte[] buffer = new byte[client.ReceiveBufferSize];
+                int bytesRead = stream.Read(buffer, 0, client.ReceiveBufferSize);
+                string username = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                Console.WriteLine(username + " has joined the chat");
+
+                byte[] welcomeBuffer = Encoding.ASCII.GetBytes("Welcome to the chat, " + username);
+                stream.Write(welcomeBuffer, 0, welcomeBuffer.Length);
+
+                // Start a new thread to handle client messages
+                System.Threading.Thread t = new System.Threading.Thread(() => HandleClient(client, username));
+                t.Start();
+            }
         }
 
-        // Clean up.
-        stream.Close();
-        client.Close();
-    }
-
-    static void BroadcastMessage(byte[] message)
-    {
-        // Send the message to all connected clients.
-        foreach (TcpClient client in clients)
+        static void HandleClient(TcpClient client, string username)
         {
             NetworkStream stream = client.GetStream();
-            stream.Write(message, 0, message.Length);
+
+            while (true)
+            {
+                byte[] buffer = new byte[client.ReceiveBufferSize];
+                int bytesRead = stream.Read(buffer, 0, client.ReceiveBufferSize);
+                string message = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                Console.WriteLine(username + ": " + message);
+
+                // Relay message to all connected clients
+                foreach (TcpClient c in clients)
+                {
+                    if (c != client)
+                    {
+                        NetworkStream s = c.GetStream();
+                        byte[] relayBuffer = Encoding.ASCII.GetBytes(username + ": " + message);
+                        s.Write(relayBuffer, 0, relayBuffer.Length);
+                    }
+                }
+            }
         }
     }
-
-    static List<TcpClient> clients = new List<TcpClient>();
-}}
+}
