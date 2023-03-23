@@ -12,8 +12,30 @@ namespace ChatServer
 
         static void Main(string[] args)
         {
-            Console.WriteLine("Starting server...");
-            TcpListener listener = new TcpListener(IPAddress.Any, 1234);
+            // Get list of interface IP addresses
+            IPAddress[] IPList = Dns.GetHostAddresses(Dns.GetHostName());
+            
+            // Create list for storing IPv4 IP addresses
+            List<IPAddress> useableIPList = new();
+
+            // Iterate through IPList, show each IPv4 address and add them to the useableIPList
+            int count = 0;
+            foreach (IPAddress IP in IPList)
+            {
+                if (IP.AddressFamily == AddressFamily.InterNetwork)
+                { 
+                    Console.WriteLine($"[{count++}]: {IP}");
+                    useableIPList.Add(IP);
+                }
+            }
+            
+            // Loop until user selects an integer that is within the list
+            int interfaceSelection;
+            do Console.Write("\nSelect IP/Interface to bind to: ");
+            while (!int.TryParse(Console.ReadLine(), out interfaceSelection) || interfaceSelection > useableIPList.Count() - 1 || interfaceSelection < 0);
+            
+            Console.WriteLine($"Starting server on {useableIPList[interfaceSelection]}...");
+            TcpListener listener = new TcpListener(useableIPList[interfaceSelection], 1234);
             listener.Start();
 
             Console.WriteLine("Listening on port 1234...");
